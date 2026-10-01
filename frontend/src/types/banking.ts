@@ -36,3 +36,9 @@ export interface ApiErrorResponse {
     message: string
   }
 }
+
+export interface TransferResult {
+  transaction_id: number
+  from_account: Account
+  to_account: Account
+}

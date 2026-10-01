@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useState,
 } from 'react'
@@ -10,12 +11,21 @@ import {
 
 import {
   getAccount,
+  getAccounts,
   getAccountTransactions,
 } from '../api/accounts'
 
 import {
   getApiErrorMessage,
 } from '../api/errors'
+
+import {
+  OperationModal,
+} from '../components/OperationModal'
+
+import type {
+  OperationMode,
+} from '../components/OperationModal'
 
 import type {
   Account,
@@ -34,6 +44,9 @@ export function AccountPage() {
   const [account, setAccount] =
     useState<Account | null>(null)
 
+  const [accounts, setAccounts] =
+    useState<Account[]>([])
+
   const [
     transactions,
     setTransactions,
@@ -45,50 +58,74 @@ export function AccountPage() {
   const [error, setError] =
     useState<string | null>(null)
 
-  useEffect(() => {
-    if (
-      !Number.isInteger(accountId) ||
-      accountId <= 0
-    ) {
-      setError(
-        'Некорректный идентификатор счёта',
-      )
+  const [
+    operationMode,
+    setOperationMode,
+  ] =
+    useState<OperationMode | null>(
+      null,
+    )
 
-      setLoading(false)
-
-      return
-    }
-
-    async function loadAccount() {
-      try {
-        setLoading(true)
-        setError(null)
-
-        const [
-          accountData,
-          transactionData,
-        ] = await Promise.all([
-          getAccount(accountId),
-          getAccountTransactions(
+  const loadAccountData =
+    useCallback(
+      async () => {
+        if (
+          !Number.isInteger(
             accountId,
-          ),
-        ])
+          ) ||
+          accountId <= 0
+        ) {
+          setError(
+            'Некорректный идентификатор счёта',
+          )
 
-        setAccount(accountData)
-        setTransactions(
-          transactionData,
-        )
-      } catch (error) {
-        setError(
-          getApiErrorMessage(error),
-        )
-      } finally {
-        setLoading(false)
-      }
-    }
+          setLoading(false)
 
-    void loadAccount()
-  }, [accountId])
+          return
+        }
+
+        try {
+          setError(null)
+
+          const [
+            accountData,
+            transactionData,
+            accountsData,
+          ] = await Promise.all([
+            getAccount(accountId),
+
+            getAccountTransactions(
+              accountId,
+            ),
+
+            getAccounts(),
+          ])
+
+          setAccount(accountData)
+
+          setTransactions(
+            transactionData,
+          )
+
+          setAccounts(
+            accountsData,
+          )
+        } catch (error) {
+          setError(
+            getApiErrorMessage(
+              error,
+            ),
+          )
+        } finally {
+          setLoading(false)
+        }
+      },
+      [accountId],
+    )
+
+  useEffect(() => {
+    void loadAccountData()
+  }, [loadAccountData])
 
   if (loading) {
     return (
@@ -125,6 +162,12 @@ export function AccountPage() {
     )
   }
 
+  const canTransfer =
+    accounts.some(
+      (item) =>
+        item.id !== account.id,
+    )
+
   return (
     <main className="app">
       <section className="dashboard">
@@ -146,16 +189,47 @@ export function AccountPage() {
             </h1>
           </div>
 
-          <div className="account-page__balance">
-            <span>
-              Текущий баланс
-            </span>
+          <div className="account-page__right">
+            <div className="account-page__balance">
+              <span>
+                Текущий баланс
+              </span>
 
-            <strong>
-              {formatKopecks(
-                account.balance_kopecks,
-              )}
-            </strong>
+              <strong>
+                {formatKopecks(
+                  account.balance_kopecks,
+                )}
+              </strong>
+            </div>
+
+            <div className="account-actions">
+              <button
+                className="secondary-button"
+                type="button"
+                disabled={
+                  !canTransfer
+                }
+                onClick={() =>
+                  setOperationMode(
+                    'transfer',
+                  )
+                }
+              >
+                Перевести
+              </button>
+
+              <button
+                className="primary-button"
+                type="button"
+                onClick={() =>
+                  setOperationMode(
+                    'deposit',
+                  )
+                }
+              >
+                + Пополнить
+              </button>
+            </div>
           </div>
         </header>
 
@@ -187,7 +261,9 @@ export function AccountPage() {
               {transactions.map(
                 (transaction) => (
                   <TransactionRow
-                    key={transaction.id}
+                    key={
+                      transaction.id
+                    }
                     transaction={
                       transaction
                     }
@@ -198,6 +274,20 @@ export function AccountPage() {
           )}
         </section>
       </section>
+
+      {operationMode && (
+        <OperationModal
+          mode={operationMode}
+          account={account}
+          accounts={accounts}
+          onClose={() =>
+            setOperationMode(null)
+          }
+          onCompleted={
+            loadAccountData
+          }
+        />
+      )}
     </main>
   )
 }
@@ -245,6 +335,7 @@ function TransactionRow({
         ].join(' ')}
       >
         {incoming ? '+' : '−'}
+
         {formatKopecks(
           transaction.amount_kopecks,
         )}
@@ -257,7 +348,8 @@ function getTransactionTitle(
   transaction: Transaction,
 ): string {
   if (
-    transaction.kind === 'deposit'
+    transaction.kind ===
+    'deposit'
   ) {
     return 'Пополнение счёта'
   }
