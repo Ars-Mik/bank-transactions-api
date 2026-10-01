@@ -1,0 +1,18 @@
+
+# Environment
+.env
+.env.*
+
+!.env.example
+
+# Build artifacts
+*.exe
+*.test
+*.out
+
+# IDE
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
