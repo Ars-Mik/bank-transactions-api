@@ -17,6 +17,16 @@ func (app *application) readinessHandler(
 	)
 	defer cancel()
 
+	if app.db == nil {
+		writeJSONError(
+			w,
+			http.StatusServiceUnavailable,
+			"DATABASE_UNAVAILABLE",
+			"Сервис временно не готов к работе",
+		)
+		return
+	}
+
 	if err := app.db.PingContext(ctx); err != nil {
 		log.Printf(
 			"Проверка готовности PostgreSQL завершилась ошибкой: %v",

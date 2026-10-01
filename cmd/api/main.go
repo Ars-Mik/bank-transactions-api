@@ -17,7 +17,7 @@ import (
 
 type application struct {
 	db       *sql.DB
-	accounts *repository.AccountRepository
+	accounts accountStore
 }
 
 func (app *application) newRouter() http.Handler {
