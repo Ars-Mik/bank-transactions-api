@@ -3,10 +3,12 @@ package main
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/Ars-Mik/bank-transactions-api/internal/repository"
@@ -14,6 +16,7 @@ import (
 )
 
 type application struct {
+	db       *sql.DB
 	accounts *repository.AccountRepository
 }
 
@@ -21,6 +24,7 @@ func (app *application) newRouter() http.Handler {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /health", healthHandler)
+	mux.HandleFunc("GET /ready", app.readinessHandler)
 
 	mux.HandleFunc("POST /accounts", app.createAccountHandler)
 	mux.HandleFunc("GET /accounts", app.listAccountsHandler)
@@ -33,15 +37,13 @@ func (app *application) newRouter() http.Handler {
 }
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
-	response := map[string]string{
-		"status": "ok",
-	}
-
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		log.Printf("failed to write response: %v", err)
-	}
+	writeJSON(
+		w,
+		http.StatusOK,
+		map[string]string{
+			"status": "ok",
+		},
+	)
 }
 
 func main() {
@@ -83,6 +85,7 @@ func main() {
 	accountRepository := repository.NewAccountRepository(db)
 
 	app := &application{
+		db:       db,
 		accounts: accountRepository,
 	}
 
@@ -90,11 +93,60 @@ func main() {
 		Addr:              ":8080",
 		Handler:           app.newRouter(),
 		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      15 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    1 << 20,
 	}
 
-	log.Println("Bank Transactions API запущен: http://localhost:8080")
+	shutdownSignal, stop := signal.NotifyContext(
+		context.Background(),
+		os.Interrupt,
+		syscall.SIGTERM,
+	)
+	defer stop()
 
-	if err := server.ListenAndServe(); err != nil {
-		log.Fatal(err)
+	serverErrors := make(chan error, 1)
+
+	go func() {
+		log.Println(
+			"Bank Transactions API запущен: http://localhost:8080",
+		)
+
+		serverErrors <- server.ListenAndServe()
+	}()
+
+	select {
+	case err := <-serverErrors:
+		if err != nil &&
+			!errors.Is(err, http.ErrServerClosed) {
+
+			log.Fatal(
+				"HTTP-сервер завершился с ошибкой: ",
+				err,
+			)
+		}
+
+	case <-shutdownSignal.Done():
+		log.Println(
+			"Получен сигнал завершения. Останавливаем сервер...",
+		)
+	}
+
+	shutdownContext, cancelShutdown := context.WithTimeout(
+		context.Background(),
+		10*time.Second,
+	)
+	defer cancelShutdown()
+
+	if err := server.Shutdown(shutdownContext); err != nil {
+		log.Printf(
+			"Не удалось корректно завершить HTTP-сервер: %v",
+			err,
+		)
+	} else {
+		log.Println(
+			"HTTP-сервер корректно остановлен",
+		)
 	}
 }
