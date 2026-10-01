@@ -48,13 +48,19 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 
-	dsn := os.Getenv("DATABASE_URL")
+	dsn, err := databaseURL()
 
-	if dsn == "" {
-		log.Fatal("DATABASE_URL environment variable is required")
+	if err != nil {
+		log.Fatal(
+			"Не удалось получить конфигурацию базы данных: ",
+			err,
+		)
 	}
 
-	db, err := sql.Open("pgx", dsn)
+	db, err := sql.Open(
+		"pgx",
+		dsn,
+	)
 
 	if err != nil {
 		log.Fatal("failed to initialize database: ", err)
