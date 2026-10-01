@@ -106,6 +106,98 @@ func (r *AccountRepository) List(
 	return accounts, nil
 }
 
+func (r *AccountRepository) ListTransactions(
+	ctx context.Context,
+	accountID int64,
+) ([]domain.Transaction, error) {
+	const existsQuery = `
+		SELECT EXISTS (
+			SELECT 1
+			FROM accounts
+			WHERE id = $1
+		)
+	`
+
+	var exists bool
+
+	if err := r.db.QueryRowContext(
+		ctx,
+		existsQuery,
+		accountID,
+	).Scan(&exists); err != nil {
+		return nil, err
+	}
+
+	if !exists {
+		return nil, domain.ErrAccountNotFound
+	}
+
+	const query = `
+		SELECT
+			id,
+			kind,
+			amount_kopecks,
+			from_account_id,
+			to_account_id,
+			created_at
+		FROM transactions
+		WHERE from_account_id = $1
+		   OR to_account_id = $1
+		ORDER BY created_at DESC, id DESC
+	`
+
+	rows, err := r.db.QueryContext(
+		ctx,
+		query,
+		accountID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	transactions := make([]domain.Transaction, 0)
+
+	for rows.Next() {
+		var transaction domain.Transaction
+
+		var fromAccountID sql.NullInt64
+		var toAccountID sql.NullInt64
+
+		if err := rows.Scan(
+			&transaction.ID,
+			&transaction.Kind,
+			&transaction.AmountKopecks,
+			&fromAccountID,
+			&toAccountID,
+			&transaction.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+
+		if fromAccountID.Valid {
+			value := fromAccountID.Int64
+			transaction.FromAccountID = &value
+		}
+
+		if toAccountID.Valid {
+			value := toAccountID.Int64
+			transaction.ToAccountID = &value
+		}
+
+		transactions = append(
+			transactions,
+			transaction,
+		)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return transactions, nil
+}
+
 func (r *AccountRepository) Deposit(
 	ctx context.Context,
 	accountID int64,
