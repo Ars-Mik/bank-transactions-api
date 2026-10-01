@@ -25,6 +25,7 @@ func (app *application) newRouter() http.Handler {
 	mux.HandleFunc("POST /accounts", app.createAccountHandler)
 	mux.HandleFunc("GET /accounts", app.listAccountsHandler)
 	mux.HandleFunc("GET /accounts/{id}", app.getAccountHandler)
+	mux.HandleFunc("POST /accounts/{id}/deposit", app.depositHandler)
 
 	return mux
 }

@@ -8,6 +8,7 @@ import (
 var (
 	ErrInvalidAmount   = errors.New("Сумма должна быть больше нуля")
 	ErrBalanceOverflow = errors.New("Превышен максимально допустимый баланс")
+	ErrAccountNotFound = errors.New("Счёт не найден")
 )
 
 type Account struct {

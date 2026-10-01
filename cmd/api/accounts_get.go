@@ -1,10 +1,12 @@
 package main
 
 import (
-	"database/sql"
+	"errors"
 	"log"
 	"net/http"
 	"strconv"
+
+	"github.com/Ars-Mik/bank-transactions-api/internal/domain"
 )
 
 func (app *application) getAccountHandler(
@@ -37,7 +39,7 @@ func (app *application) getAccountHandler(
 
 	if err != nil {
 
-		if err == sql.ErrNoRows {
+		if errors.Is(err, domain.ErrAccountNotFound) {
 
 			writeJSONError(
 				w,
