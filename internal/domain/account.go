@@ -6,9 +6,11 @@ import (
 )
 
 var (
-	ErrInvalidAmount   = errors.New("Сумма должна быть больше нуля")
-	ErrBalanceOverflow = errors.New("Превышен максимально допустимый баланс")
-	ErrAccountNotFound = errors.New("Счёт не найден")
+	ErrInvalidAmount     = errors.New("сумма должна быть больше нуля")
+	ErrBalanceOverflow   = errors.New("превышен максимально допустимый баланс")
+	ErrAccountNotFound   = errors.New("счёт не найден")
+	ErrInsufficientFunds = errors.New("недостаточно средств на счёте")
+	ErrSameAccount       = errors.New("нельзя выполнить перевод на тот же счёт")
 )
 
 type Account struct {
@@ -26,6 +28,20 @@ func (a *Account) Deposit(amount int64) error {
 	}
 
 	a.BalanceKopecks += amount
+
+	return nil
+}
+
+func (a *Account) Withdraw(amount int64) error {
+	if amount <= 0 {
+		return ErrInvalidAmount
+	}
+
+	if a.BalanceKopecks < amount {
+		return ErrInsufficientFunds
+	}
+
+	a.BalanceKopecks -= amount
 
 	return nil
 }

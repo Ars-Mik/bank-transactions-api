@@ -195,3 +195,169 @@ func (r *AccountRepository) Deposit(
 
 	return account, nil
 }
+
+func (r *AccountRepository) Transfer(
+	ctx context.Context,
+	fromAccountID int64,
+	toAccountID int64,
+	amount int64,
+) (*domain.TransferResult, error) {
+	if fromAccountID == toAccountID {
+		return nil, domain.ErrSameAccount
+	}
+
+	if amount <= 0 {
+		return nil, domain.ErrInvalidAmount
+	}
+
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
+	firstID := fromAccountID
+	secondID := toAccountID
+
+	if firstID > secondID {
+		firstID, secondID = secondID, firstID
+	}
+
+	firstAccount, err := getAccountForUpdate(
+		ctx,
+		tx,
+		firstID,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	secondAccount, err := getAccountForUpdate(
+		ctx,
+		tx,
+		secondID,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	var fromAccount *domain.Account
+	var toAccount *domain.Account
+
+	if firstAccount.ID == fromAccountID {
+		fromAccount = firstAccount
+		toAccount = secondAccount
+	} else {
+		fromAccount = secondAccount
+		toAccount = firstAccount
+	}
+
+	if err := fromAccount.Withdraw(amount); err != nil {
+		return nil, err
+	}
+
+	if err := toAccount.Deposit(amount); err != nil {
+		return nil, err
+	}
+
+	const updateQuery = `
+		UPDATE accounts
+		SET balance_kopecks = $1
+		WHERE id = $2
+	`
+
+	if _, err := tx.ExecContext(
+		ctx,
+		updateQuery,
+		fromAccount.BalanceKopecks,
+		fromAccount.ID,
+	); err != nil {
+		return nil, err
+	}
+
+	if _, err := tx.ExecContext(
+		ctx,
+		updateQuery,
+		toAccount.BalanceKopecks,
+		toAccount.ID,
+	); err != nil {
+		return nil, err
+	}
+
+	const transactionQuery = `
+		INSERT INTO transactions (
+			kind,
+			amount_kopecks,
+			from_account_id,
+			to_account_id
+		)
+		VALUES (
+			'transfer',
+			$1,
+			$2,
+			$3
+		)
+		RETURNING id
+	`
+
+	var transactionID int64
+
+	err = tx.QueryRowContext(
+		ctx,
+		transactionQuery,
+		amount,
+		fromAccount.ID,
+		toAccount.ID,
+	).Scan(&transactionID)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	return &domain.TransferResult{
+		TransactionID: transactionID,
+		FromAccount:   *fromAccount,
+		ToAccount:     *toAccount,
+	}, nil
+}
+
+func getAccountForUpdate(
+	ctx context.Context,
+	tx *sql.Tx,
+	id int64,
+) (*domain.Account, error) {
+	const query = `
+		SELECT id, balance_kopecks
+		FROM accounts
+		WHERE id = $1
+		FOR UPDATE
+	`
+
+	account := &domain.Account{}
+
+	err := tx.QueryRowContext(
+		ctx,
+		query,
+		id,
+	).Scan(
+		&account.ID,
+		&account.BalanceKopecks,
+	)
+
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, domain.ErrAccountNotFound
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return account, nil
+}
