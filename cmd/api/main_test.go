@@ -40,3 +40,51 @@ func TestHealth(t *testing.T) {
 		)
 	}
 }
+
+func TestUnknownRoute(t *testing.T) {
+	app := &application{}
+
+	request := httptest.NewRequest(
+		http.MethodGet,
+		"/does-not-exist",
+		nil,
+	)
+
+	response := httptest.NewRecorder()
+
+	app.newRouter().ServeHTTP(
+		response,
+		request,
+	)
+
+	if response.Code != http.StatusNotFound {
+		t.Fatalf(
+			"ожидался статус 404, получен %d",
+			response.Code,
+		)
+	}
+}
+
+func TestMethodNotAllowed(t *testing.T) {
+	app := &application{}
+
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/health",
+		nil,
+	)
+
+	response := httptest.NewRecorder()
+
+	app.newRouter().ServeHTTP(
+		response,
+		request,
+	)
+
+	if response.Code != http.StatusMethodNotAllowed {
+		t.Fatalf(
+			"ожидался статус 405, получен %d",
+			response.Code,
+		)
+	}
+}

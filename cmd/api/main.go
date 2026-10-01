@@ -33,7 +33,7 @@ func (app *application) newRouter() http.Handler {
 	mux.HandleFunc("POST /transfers", app.transferHandler)
 	mux.HandleFunc("GET /accounts/{id}/transactions", app.accountTransactionsHandler)
 
-	return mux
+	return loggingMiddleware(mux)
 }
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {
